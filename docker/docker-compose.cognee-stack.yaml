@@ -73,6 +73,9 @@ services:
       # LLM settings
       COGNEE_LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+      # Disable telemetry
+      TELEMETRY_DISABLED: "true"
     volumes:
       - cognee_data:/data
       - lancedb_data:/data/lancedb
@@ -111,6 +114,8 @@ services:
       GRIST_SESSION_SECRET: ${GRIST_SESSION_SECRET:-change-me-in-production}
       GRIST_SINGLE_ORG: sonik
       APP_HOME_URL: http://localhost:8484
+      # Disable version check (telemetry off by default for self-hosted)
+      GRIST_ALLOW_AUTOMATIC_VERSION_CHECKING: "false"
     volumes:
       - grist_data:/persist
     networks:
