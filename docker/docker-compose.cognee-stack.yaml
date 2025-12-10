@@ -1,0 +1,128 @@
+# docker-compose.cognee-stack.yaml
+# Cognee Data Layer - Infrastructure Only
+# PostgreSQL is external (your existing database)
+
+version: '3.8'
+
+services:
+  # ============================================
+  # FalkorDB - Graph Database (runs on Redis)
+  # ============================================
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: sonik-falkordb
+    ports:
+      - "6379:6379"
+    volumes:
+      - falkordb_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sonik-network
+
+  # ============================================
+  # RedisVL - Semantic Caching + Vector Search
+  # ============================================
+  redisvl:
+    image: redis/redis-stack:latest
+    container_name: sonik-redisvl
+    ports:
+      - "6380:6379"
+      - "8001:8001"  # RedisInsight UI
+    environment:
+      REDIS_ARGS: "--requirepass ${REDIS_PASSWORD:-sonik}"
+    volumes:
+      - redisvl_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-sonik}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sonik-network
+
+  # ============================================
+  # Cognee - AI Memory Orchestration
+  # ============================================
+  cognee:
+    image: cognee/cognee:latest
+    container_name: sonik-cognee
+    ports:
+      - "8000:8000"
+    environment:
+      # PostgreSQL - YOUR EXISTING DATABASE
+      COGNEE_DB_PROVIDER: postgres
+      COGNEE_DB_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in .env}
+      COGNEE_DB_PORT: ${POSTGRES_PORT:-5432}
+      COGNEE_DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      COGNEE_DB_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      COGNEE_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
+      # Graph store - FalkorDB
+      COGNEE_GRAPH_PROVIDER: falkordb
+      COGNEE_GRAPH_HOST: falkordb
+      COGNEE_GRAPH_PORT: 6379
+
+      # Vector store - LanceDB (embedded)
+      COGNEE_VECTOR_PROVIDER: lancedb
+      COGNEE_VECTOR_PATH: /data/lancedb
+
+      # LLM settings
+      COGNEE_LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - cognee_data:/data
+      - lancedb_data:/data/lancedb
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    networks:
+      - sonik-network
+
+  # ============================================
+  # NocoDB - Spreadsheet UI for PostgreSQL
+  # ============================================
+  nocodb:
+    image: nocodb/nocodb:latest
+    container_name: sonik-nocodb
+    ports:
+      - "8080:8080"
+    environment:
+      NC_DB: "pg://${POSTGRES_HOST}:${POSTGRES_PORT:-5432}?u=${POSTGRES_USER}&p=${POSTGRES_PASSWORD}&d=${POSTGRES_DB}"
+      NC_AUTH_JWT_SECRET: ${NOCODB_JWT_SECRET:-change-me-in-production}
+    volumes:
+      - nocodb_data:/usr/app/data
+    networks:
+      - sonik-network
+
+  # ============================================
+  # Grist - Smart Spreadsheets
+  # ============================================
+  grist:
+    image: gristlabs/grist:latest
+    container_name: sonik-grist
+    ports:
+      - "8484:8484"
+    environment:
+      GRIST_SESSION_SECRET: ${GRIST_SESSION_SECRET:-change-me-in-production}
+      GRIST_SINGLE_ORG: sonik
+      APP_HOME_URL: http://localhost:8484
+    volumes:
+      - grist_data:/persist
+    networks:
+      - sonik-network
+
+volumes:
+  falkordb_data:
+  redisvl_data:
+  cognee_data:
+  lancedb_data:
+  nocodb_data:
+  grist_data:
+
+networks:
+  sonik-network:
+    driver: bridge
